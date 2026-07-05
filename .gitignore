@@ -17,3 +17,7 @@ ignore <- c(
   ".Rhistory"
 )
 writeLines(ignore, ".gitignore")
+ /.quarto/
+/.Rproj.user/
+/_site/
+/_freeze/ 
