@@ -1,0 +1,19 @@
+ignore <- c(
+  "# Quarto build output",
+  "/_site/",
+  "/_freeze/",
+  "/.quarto/",
+  "",
+  "# Crash / scratch files",
+  "_quarto_internal_scss_error.scss",
+  "",
+  "# PFAS manuscript assets — gitignored until PI clears for publication",
+  "Threshold Table Ver 2.0.xlsx",
+  "fig4b_extended_compounds.pdf",
+  "fig4b_extended_compounds.png",
+  "",
+  "# OS / editor cruft",
+  ".Rproj.user/",
+  ".Rhistory"
+)
+writeLines(ignore, ".gitignore")

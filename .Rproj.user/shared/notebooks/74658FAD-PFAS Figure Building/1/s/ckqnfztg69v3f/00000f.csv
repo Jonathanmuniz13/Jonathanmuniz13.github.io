@@ -1,0 +1,6 @@
+"0","p <- ggplot(data = states_sf) +"
+"0","  geom_sf(aes(fill = category), color = ""white"", linewidth = 0.3) +"
+"0","  scale_fill_manual(values = cat_colors, name = NULL,"
+"0","                    guide = guide_legend(nrow = 2, byrow = TRUE,"
+"0","                                         override.aes = list(color = NA))) +"
+"0","  coord_sf(crs = usmap_crs()$crs)"

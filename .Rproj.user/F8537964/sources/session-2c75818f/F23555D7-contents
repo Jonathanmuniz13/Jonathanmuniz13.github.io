@@ -1,0 +1,115 @@
+---
+title: "CoffeeKing: Coffee-Shop Analytics at Scale"
+description: "A distributed pipeline over 442K Yelp reviews — operating-hour patterns, quality deserts, and sentiment signals across 6.7K coffee & tea shops."
+# Thumbnail for the Projects grid.
+# You asked for the map; see the page write-up — hours-chart.png is the stronger
+# first impression. To swap, just change the next line to: image: hours-chart.png
+image: underserved-map.png
+date: "2025-12-01"   # <- set to your real project date; this controls order in the grid
+categories: [Databricks, Spark SQL, Python, NLP, Big Data]
+---
+
+## The question
+
+Coffee is the substrate; the exercise is engineering. Can a two-stage distributed
+pipeline turn 442,000 raw Yelp reviews into decision-grade answers about *where*
+coffee-shop quality breaks down and *why*? Three concrete questions drove the work:
+
+1. When do the best-rated shops actually operate?
+2. Which ZIP codes are **underserved** — saturated with shops but starved of quality?
+3. What separates a five-star experience from a one-star one, in customers' own words?
+
+## The data
+
+The raw material was the Yelp Open Dataset, filtered to the coffee & tea category:
+
+- **442K** reviews
+- **6.7K** coffee & tea shops
+- **259K** users
+
+## Method — a two-stage pipeline
+
+The point of the project was to handle this at scale rather than collapse it into a
+single in-memory dataframe.
+
+**Stage 1 (Google Colab).** Raw JSON was extracted, cleaned, and filtered to the
+coffee & tea category, then written out as Parquet — a columnar format that makes
+the next stage cheap to read.
+
+**Stage 2 (Databricks / Spark).** Parquet was loaded into Delta tables. Aggregation
+and the underserved-ZIP logic ran in **Spark SQL**; the review-text work (tokenizing,
+cleaning, and word-frequency analysis behind the sentiment view) ran in **Python**.
+Working in Delta meant the heavy joins and group-bys distributed across the cluster
+instead of choking a laptop.
+
+## Q1 — When are the best shops open?
+
+Among shops rated **4.5★ and above**, operating hours cluster hard in the daytime.
+The single most common window is **7 AM–5 PM**, trailed by other early-open,
+mid-afternoon-close ranges. The top performers are, overwhelmingly, daytime
+businesses — the data doesn't reward staying open late.
+
+![Top ten operating-hour ranges among 4.5★+ shops; the 7 AM–5 PM window leads by a clear margin.](hours-chart.png){fig-alt="Horizontal bar chart of the ten most frequent operating-hour ranges among shops rated 4.5 stars or higher. The 7 AM to 5 PM range is the most frequent, followed by 7 AM to 2 PM and 8 AM to 3 PM."}
+
+## Q2 — Where is coffee underserved?
+
+Defining *underserved* as ZIP codes with **≥20 shops but an average rating ≤3.5★** —
+plenty of supply, thin on quality — a handful of markets stand out: **Tampa (33607,
+33610)**, **Reno (89434)**, and **suburban Philadelphia (19406)**, among others.
+These are places where demand is clearly proven by shop density, yet no one is
+winning on quality.
+
+![Underserved ZIP codes — high shop density paired with low average rating.](underserved-map.png){fig-alt="Map of the United States with markers on underserved ZIP codes, including Tampa, Reno, and suburban Philadelphia."}
+
+## Q3 — What do five- and one-star reviews talk about?
+
+The vocabulary splits cleanly. Five-star reviews lean on **product and people** —
+*great, delicious, friendly, coffee, love*. One-star reviews lean on **process
+failure** — *order, waited, minutes, told, manager, rude, never*. Customers almost
+never complain about the coffee itself; they complain about the operation around it.
+
+![Five-star (left) versus one-star (right) review vocabulary. The negative cloud is dominated by service-and-process words, not product words.](sentiment-wordclouds.png){fig-alt="Two word clouds side by side. The five-star cloud emphasizes product and friendliness words like great, delicious, coffee, and friendly. The one-star cloud emphasizes service-and-process words like order, waited, minutes, told, manager, and rude."}
+
+## Recommendations
+
+*(Derived from the findings above — align the wording with your deck.)*
+
+1. **Target underserved ZIPs for premium entrants.** 33607, 33610, 89434, and 19406
+   have demonstrated demand and a quality vacuum; a strong operator faces proven
+   appetite with weak incumbents.
+2. **In dense, low-rated markets, fix the operation, not the menu.** One-star
+   complaints cluster on ordering flow, wait times, and staff conduct — not on the
+   coffee. The lever is process and training.
+3. **Staff to the 7 AM–5 PM peak.** Top shops are daytime businesses; concentrate
+   labor where the demand and the ratings actually are, rather than over-investing in
+   late hours the best performers don't keep.
+4. **Make the five-star vocabulary an experience checklist.** Friendliness,
+   consistency, and product quality are what customers reward in their own words —
+   use them as both an operational standard and marketing language.
+
+## Why it matters
+
+The headline isn't "coffee." It's that a self-contained, two-stage Spark pipeline can
+take nearly half a million unstructured reviews and surface three independently
+actionable signals — *when* to operate, *where* the market gaps are, and *what*
+actually drives the rating — without ever leaving distributed compute.
+
+## Limitations
+
+A few things to read it honestly:
+
+- **Selection bias.** Yelp reviewers skew toward the extremes, so the sentiment view
+  reflects the vocal tails more than the median customer.
+- **"Underserved" is volume × rating only.** It doesn't account for population, foot
+  traffic, or local competition mix — a dense, low-rated ZIP could be a tourist
+  corridor rather than a true service desert.
+- **Sentiment is descriptive, not a classifier.** Word frequency shows *what* differs
+  between one- and five-star reviews; it can't separate correlation from cause.
+- **Power users dominate volume.** A small number of prolific reviewers account for a
+  disproportionate share of reviews, which can skew shop-level signals.
+- **Listed hours ≠ observed hours.** Q1 uses hours as posted, not as actually kept.
+
+## Links
+
+- [Project deck (Google Slides)](PASTE_YOUR_SLIDES_URL){target="_blank"}
+- [Full Databricks notebook](notebook.html){target="_blank"}

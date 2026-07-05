@@ -1,0 +1,47 @@
+---
+title: "Jonathan Muniz"
+image: profile.jpg
+about:
+  template: trestles
+  image-shape: round
+  links:
+    - icon: linkedin
+      text: LinkedIn
+      href: https://www.linkedin.com/in/jonathan-muniz-fl
+    - icon: github
+      text: GitHub
+      href: https://github.com/Jonathanmuniz13
+    - text: Kaggle
+      href: https://www.kaggle.com/themuniz
+---
+
+I'm finishing my graduate degree in Biostatistics, but my path here started
+at the lab bench. Over six years working in research labs — with academic
+roots in Biology and Pharmacy — I learned how biomedical data is actually
+generated: the protocols, the instruments, the deviations, and the messy
+realities that never show up in a clean CSV.
+
+That experience shapes how I do statistics. I don't just fit models; I ask
+whether the data can support the question, and I build analyses that someone
+else can reproduce and audit. My day-to-day tools are R (tidyverse, ggplot2)
+and Python — including a deployed interactive dashboard built with PyShiny —
+with a focus on survival analysis, mixed models, and clinical trial design.
+
+I'm currently looking for roles in industry data science and clinical-trials
+biostatistics, where domain knowledge and statistical rigor both matter.
+
+Outside of work, I love to cook and bake — which, like any good experiment,
+comes down to following a procedure. In this case, the protocol is a recipe.
+
+## Skills & Tools
+
+**Statistical methods:** regression analysis, ANOVA, survival analysis,
+mixed-effects models, hypothesis testing, study design
+
+**Programming:** R (tidyverse, ggplot2, Shiny), Python (pandas, PyShiny),
+Quarto, Git/GitHub
+
+**Domain:** clinical and regulatory analysis, pharmacy, six years of
+wet-lab research practice
+
+[Download my resume](resume.pdf){.btn .btn-outline-primary role="button"}

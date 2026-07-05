@@ -1,0 +1,3 @@
+"0",""
+"0","# ---- Export using ggsave (Matching your 1200x960, 150 DPI goal) ----"
+"0","ggsave(""forest-hero.png"", width = 1200, height = 960, units = ""px"", dpi = 150)"

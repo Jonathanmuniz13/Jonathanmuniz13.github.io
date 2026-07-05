@@ -1,0 +1,893 @@
+---
+title: "Trans-Ethnic Meta-Analysis of Metformin Glycemic Response"
+subtitle: "PHC6088 – Statistical Analysis of Genetic Data: Course Project"
+author: "Jonathan Muniz"
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    toc: true
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    theme: flatly
+    code_folding: show
+    fig_width: 10
+    fig_height: 6
+---
+
+# 1. Setup & Data Loading
+
+```{r load-packages}
+library(data.table)
+library(dplyr)
+library(meta)
+library(knitr)
+library(kableExtra)
+library(ggplot2)
+```
+
+
+## 2.1 Load GCST004522 — MetGen Consortium (European)
+
+This study identified **rs8192675** (*SLC2A2*) as the top hit for HbA1c
+reduction in response to metformin. The GWAS Catalog provides beta and
+95% CI for this association.
+
+```{r load-metgen}
+metgen_raw <- fread("gwas-association-downloaded_2026-03-11-accessionId_GCST004522.tsv")
+
+study_metgen <- metgen_raw %>%
+  filter(SNPS == "rs8192675") %>%
+  transmute(
+    Study         = "MetGen (European)",
+    SNP           = SNPS,
+    Gene          = "SLC2A2",
+    Effect_Allele = "C",
+    Beta          = as.numeric(`OR or BETA`),
+    CI_Lower      = 0.13,                        # Parsed from [0.13-0.21]
+    CI_Upper      = 0.21,
+    SE            = (CI_Upper - CI_Lower) / 3.92, # = (U-L) / (2 * 1.96)
+    P_value       = 7e-14,
+    N             = 10577,
+    Outcome_Scale = "Continuous (HbA1c)"
+  )
+```
+
+## 2.2 Load GCST000927 — GoDARTS / UKPDS (European)
+
+This study identified **rs11212617** (*ATM*) using a **binary** responder
+classification. The reported effect is an Odds Ratio, which we convert to
+log-OR for comparability.
+
+```{r load-godarts}
+godarts_raw <- fread("gwas-association-downloaded_2026-03-12-accessionId_GCST000927.tsv")
+
+study_godarts <- godarts_raw %>%
+  filter(SNPS == "rs11212617") %>%
+  transmute(
+    Study         = "GoDARTS (European)",
+    SNP           = SNPS,
+    Gene          = "ATM",
+    Effect_Allele = "C",
+    OR            = as.numeric(`OR or BETA`),
+    Beta          = log(OR),                           # log(1.35) = 0.3001
+    CI_Lower      = log(1.22),
+    CI_Upper      = log(1.49),
+    SE            = (CI_Upper - CI_Lower) / 3.92,      # SE on log-OR scale
+    P_value       = 3e-9,
+    N             = 3920,
+    Outcome_Scale = "Binary (log-OR)"
+  )
+```
+
+## 2.3 Load GCST90269867 — SUGAR-MGH (Multi-Ancestry)
+
+This is the only study with full genome-wide summary statistics. We extracted
+the two candidate SNPs by genomic position using command-line tools prior to
+loading.
+
+```{r load-sugar}
+sugar_hits <- fread("metformin_hits.txt", header = FALSE)
+colnames(sugar_hits) <- c("chromosome", "base_pair_location", "effect_allele",
+                          "other_allele", "beta", "standard_error",
+                          "effect_allele_frequency", "p_value")
+
+# rs8192675 (SLC2A2) — chr3:171007094
+sugar_slc2a2 <- sugar_hits %>%
+  filter(base_pair_location == 171007094) %>%
+  transmute(
+    Study         = "SUGAR-MGH (Multi-Ancestry)",
+    SNP           = "rs8192675",
+    Gene          = "SLC2A2",
+    Effect_Allele = effect_allele,                     # Already "C"
+    Beta          = beta,
+    SE            = standard_error,
+    P_value       = p_value,
+    N             = 8269,
+    Outcome_Scale = "Continuous (HbA1c)"
+  )
+
+# rs11212617 (ATM) — chr11:108412434
+sugar_atm <- sugar_hits %>%
+  filter(base_pair_location == 108412434) %>%
+  transmute(
+    Study         = "SUGAR-MGH (Multi-Ancestry)",
+    SNP           = "rs11212617",
+    Gene          = "ATM",
+    Effect_Allele = effect_allele,                     # "A" — needs harmonization
+    Beta          = beta,
+    SE            = standard_error,
+    P_value       = p_value,
+    N             = 8269,
+    Outcome_Scale = "Continuous (HbA1c)"
+  )
+```
+
+# 3. Allele Harmonization
+
+A critical QC step in any meta-analysis is ensuring that effect estimates
+refer to the **same allele** across studies.
+
+## 3.1 rs8192675 (SLC2A2)
+
+```{r harmonize-slc2a2}
+cat("MetGen effect allele:   ", study_metgen$Effect_Allele, "\n")
+cat("SUGAR-MGH effect allele:", sugar_slc2a2$Effect_Allele, "\n")
+```
+
+Both studies report effects with respect to the **C allele**. No allele flip
+is required.
+
+## 3.2 rs11212617 (ATM) — Allele Flip Required
+
+```{r harmonize-atm}
+cat("GoDARTS effect allele:  ", study_godarts$Effect_Allele, "(risk allele)\n")
+cat("SUGAR-MGH effect allele:", sugar_atm$Effect_Allele, "\n")
+cat("SUGAR-MGH other allele: ", "C\n")
+
+# Flip SUGAR-MGH to C allele to match GoDARTS
+sugar_atm_harmonized <- sugar_atm %>%
+  mutate(
+    Beta          = -Beta,          # Flip sign
+    Effect_Allele = "C"             # SE is symmetric — unchanged
+  )
+
+cat("\nAfter harmonization:\n")
+cat("SUGAR-MGH Beta (flipped to C):", round(sugar_atm_harmonized$Beta, 4), "\n")
+```
+
+## 3.3 Outcome Scale Mismatch — ATM
+
+```{r scale-warning}
+cat("GoDARTS outcome:   ", study_godarts$Outcome_Scale, "\n")
+cat("SUGAR-MGH outcome: ", sugar_atm_harmonized$Outcome_Scale, "\n")
+```
+
+> **Methodological note:** GoDARTS uses a binary responder/non-responder
+> classification (reporting Odds Ratio), while SUGAR-MGH uses continuous
+> HbA1c change (reporting Beta). These are fundamentally different scales
+> and **cannot be directly combined** in an inverse-variance weighted
+> meta-analysis. We present them descriptively and use Fisher's method
+> as a sensitivity analysis.
+
+# 4. Master Data Table
+
+```{r master-table}
+master_df <- data.frame(
+  Study         = c("MetGen (European)", "SUGAR-MGH (Multi-Ancestry)",
+                    "GoDARTS (European)", "SUGAR-MGH (Multi-Ancestry)"),
+  SNP           = c("rs8192675", "rs8192675",
+                    "rs11212617", "rs11212617"),
+  Gene          = c("SLC2A2", "SLC2A2", "ATM", "ATM"),
+  Ancestry      = c("European", "Multi-Ancestry",
+                    "European", "Multi-Ancestry"),
+  N             = c(10577, 8269, 3920, 8269),
+  Effect_Allele = c("C", "C", "C", "C"),
+  Beta          = c(study_metgen$Beta,
+                    sugar_slc2a2$Beta,
+                    study_godarts$Beta,
+                    sugar_atm_harmonized$Beta),
+  SE            = c(study_metgen$SE,
+                    sugar_slc2a2$SE,
+                    study_godarts$SE,
+                    sugar_atm_harmonized$SE),
+  P_value       = c(7e-14, sugar_slc2a2$P_value,
+                    3e-9, sugar_atm$P_value),
+  Scale         = c("Continuous", "Continuous", "log(OR)", "Continuous"),
+  stringsAsFactors = FALSE
+)
+
+kable(master_df,
+      digits  = c(0, 0, 0, 0, 0, 0, 4, 4, 4, 0),
+      caption = "Study-level estimates for candidate SNPs",
+      col.names = c("Study", "SNP", "Gene", "Ancestry", "N",
+                     "Effect Allele", "Beta", "SE", "P-value", "Scale"))
+```
+
+# 5. Meta-Analysis: rs8192675 (SLC2A2)
+
+## 5.1 Calculations
+
+### Fixed-Effects — Inverse-Variance Weighting
+
+$$\hat{\beta}_{FE} = \frac{\sum_{i=1}^{S} w_i \hat{\beta}_i}{\sum_{i=1}^{S} w_i}, \quad w_i = \frac{1}{\sigma^2_{\hat{\beta}_i}}$$
+
+```{r fe-manual}
+# Prepare study-level vectors
+betas <- c(study_metgen$Beta, sugar_slc2a2$Beta)
+ses   <- c(study_metgen$SE, sugar_slc2a2$SE)
+names <- c("MetGen (European)", "SUGAR-MGH (Multi-Ancestry)")
+
+# Fixed-effects weights
+w <- 1 / ses^2
+
+cat("Study weights (w_i = 1/SE^2):\n")
+for (i in seq_along(w)) {
+  cat(sprintf("  %s: w = %.2f (%.1f%%)\n", names[i], w[i], 100 * w[i] / sum(w)))
+}
+
+# Pooled estimate
+beta_FE <- sum(w * betas) / sum(w)
+se_FE   <- 1 / sqrt(sum(w))
+z_FE    <- beta_FE / se_FE
+p_FE    <- 2 * pnorm(-abs(z_FE))
+
+cat(sprintf("\nPooled Beta_FE = %.4f\n", beta_FE))
+cat(sprintf("SE(Beta_FE)    = %.4f\n", se_FE))
+cat(sprintf("Z-statistic    = %.4f\n", z_FE))
+cat(sprintf("P-value        = %.2e\n", p_FE))
+cat(sprintf("95%% CI         = [%.4f, %.4f]\n",
+            beta_FE - 1.96 * se_FE, beta_FE + 1.96 * se_FE))
+```
+
+### Cochran's Q — Test for Heterogeneity
+
+$$Q = \sum_{i=1}^{S} \frac{(\hat{\beta}_i - \hat{\beta}_{FE})^2}{\sigma^2_{\hat{\beta}_i}} \sim \chi^2_{S-1}$$
+
+```{r cochran-q}
+Q     <- sum(w * (betas - beta_FE)^2)
+Q_df  <- length(betas) - 1
+Q_p   <- pchisq(Q, df = Q_df, lower.tail = FALSE)
+I2    <- max(0, (Q - Q_df) / Q) * 100
+
+cat(sprintf("Cochran's Q = %.4f (df = %d)\n", Q, Q_df))
+cat(sprintf("P-value     = %.4e\n", Q_p))
+cat(sprintf("I-squared   = %.1f%%\n", I2))
+```
+
+### Random-Effects — DerSimonian-Laird
+
+$$\hat{\beta}_{RE} = \frac{\sum_{i=1}^{S} w^*_i \hat{\beta}_i}{\sum_{i=1}^{S} w^*_i}, \quad w^*_i = \frac{1}{\sigma^2_{\hat{\beta}_i} + \hat{\tau}^2}$$
+
+
+```{r re-manual}
+# Estimate between-study variance (tau^2) via DerSimonian-Laird
+C_val <- sum(w) - sum(w^2) / sum(w)
+tau2  <- max(0, (Q - Q_df) / C_val)
+
+# Random-effects weights
+w_star <- 1 / (ses^2 + tau2)
+
+cat("Between-study variance:\n")
+cat(sprintf("  tau^2 = %.6f\n", tau2))
+cat(sprintf("  tau   = %.4f\n\n", sqrt(tau2)))
+
+cat("Random-effects weights:\n")
+for (i in seq_along(w_star)) {
+  cat(sprintf("  %s: w* = %.2f (%.1f%%)\n",
+              names[i], w_star[i], 100 * w_star[i] / sum(w_star)))
+}
+
+# Pooled RE estimate
+beta_RE <- sum(w_star * betas) / sum(w_star)
+se_RE   <- 1 / sqrt(sum(w_star))
+z_RE    <- beta_RE / se_RE
+p_RE    <- 2 * pnorm(-abs(z_RE))
+
+cat(sprintf("\nPooled Beta_RE = %.4f\n", beta_RE))
+cat(sprintf("SE(Beta_RE)    = %.4f\n", se_RE))
+cat(sprintf("Z-statistic    = %.4f\n", z_RE))
+cat(sprintf("P-value        = %.4e\n", p_RE))
+cat(sprintf("95%% CI         = [%.4f, %.4f]\n",
+            beta_RE - 1.96 * se_RE, beta_RE + 1.96 * se_RE))
+```
+
+## 5.2 Verification with `meta::metagen()`
+
+```{r meta-package}
+slc2a2_df <- data.frame(
+  Study = names,
+  Beta  = betas,
+  SE    = ses
+)
+
+m_slc2a2 <- metagen(
+  TE         = Beta,
+  seTE       = SE,
+  data       = slc2a2_df,
+  studlab    = Study,
+  sm         = "MD",
+  common     = TRUE,
+  random     = TRUE,
+  method.tau = "DL",
+  title      = "rs8192675 (SLC2A2) — HbA1c Response to Metformin"
+)
+
+summary(m_slc2a2)
+```
+
+
+## 5.3 Weight Shift Plot 
+
+```{r}
+weight_df <- data.frame(
+  Study = rep(c("MetGen\n(European)", "SUGAR-MGH\n(Multi-Ancestry)"), 2),
+  Model = rep(c("Fixed-Effects", "Random-Effects"), each = 2),
+  Weight = c(84.7, 15.3, 52.3, 47.7)
+)
+
+weight_df$Model <- factor(weight_df$Model, levels = c("Fixed-Effects", "Random-Effects"))
+
+ggplot(weight_df, aes(x = Study, y = Weight, fill = Model)) +
+  geom_col(position = position_dodge(width = 0.7), width = 0.6) +
+  geom_text(aes(label = paste0(Weight, "%")),
+            position = position_dodge(width = 0.7),
+            vjust = -0.5, size = 3.5) +
+  scale_fill_manual(values = c("Fixed-Effects" = "steelblue", "Random-Effects" = "darkred")) +
+  scale_y_continuous(limits = c(0, 100), breaks = seq(0, 100, 20),
+                     labels = function(x) paste0(x, "%")) +
+  labs(
+    title = "Study Weight Reallocation Under Random-Effects Model",
+    subtitle = "rs8192675 (SLC2A2) — Heterogeneity equalizes study contributions",
+    x = NULL,
+    y = "Meta-Analysis Weight",
+    fill = NULL
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    legend.position = "top",
+    panel.grid.major.x = element_blank(),
+    plot.title = element_text(face = "bold", size = 13),
+    plot.subtitle = element_text(size = 10, color = "gray40")
+  )
+
+ggsave("weight_shift_plot.png", width = 8, height = 5, dpi = 300)
+```
+
+## 5.4 Forest Plot
+
+```{r}
+# ---- Data ----
+forest_df <- data.frame(
+  label  = c("MetGen (European)", "SUGAR-MGH (Multi-Ancestry)",
+             "", "Common effect model", "Random effects model"),
+  beta   = c(0.17, -0.03, NA, 0.14, 0.07),
+  ci_lo  = c(0.13, -0.13, NA, 0.10, -0.13),
+  ci_hi  = c(0.21,  0.06, NA, 0.18,  0.27),
+  weight = c("52.3%", "47.7%", "", "\u2014", "100.0%"),
+  group  = c("study", "study", "spacer", "pooled", "pooled"),
+  y      = c(5, 4, 3, 2, 1)
+)
+
+forest_df$ci_text <- ifelse(
+  is.na(forest_df$beta), "",
+  sprintf("%.2f [%.2f, %.2f]", forest_df$beta, forest_df$ci_lo, forest_df$ci_hi)
+)
+
+studies <- forest_df[forest_df$group == "study", ]
+pooled  <- forest_df[forest_df$group == "pooled", ]
+
+# ---- Diamond polygons ----
+make_diamond <- function(row) {
+  data.frame(
+    x  = c(row$ci_lo, row$beta, row$ci_hi, row$beta),
+    y  = c(row$y, row$y + 0.22, row$y, row$y - 0.22),
+    id = row$label
+  )
+}
+diamonds <- do.call(rbind, lapply(seq_len(nrow(pooled)), function(i) make_diamond(pooled[i, ])))
+
+# ---- Layout constants ----
+# Widen the canvas: labels on left, plot in center, annotations on right
+x_label   <- -0.42   # left edge for study labels
+x_ci      <-  0.52   # right-side: Beta [95% CI] column
+x_wt      <-  0.63   # right-side: Weight column
+x_hdr_y   <-  6.2    # header row y position
+x_min     <- -0.42
+x_max     <-  0.67
+
+# ---- Build plot ----
+ggplot() +
+
+  # Null effect line
+  geom_vline(xintercept = 0, linetype = "dashed", color = "gray60", linewidth = 0.4) +
+
+  # Separator line between studies and pooled
+  geom_segment(aes(x = -0.22, xend = 0.32, y = 3, yend = 3),
+               color = "gray80", linewidth = 0.3) +
+
+  # ---- Study rows: CI lines + squares ----
+  geom_segment(data = studies,
+               aes(x = ci_lo, xend = ci_hi, y = y, yend = y),
+               linewidth = 0.8, color = "gray30") +
+  geom_point(data = studies,
+             aes(x = beta, y = y),
+             shape = 15, color = "steelblue",
+             size = c(4.5, 3.8)) +  
+
+  # ---- Pooled rows: diamonds ----
+  geom_polygon(data = diamonds[diamonds$id == "Common effect model", ],
+               aes(x = x, y = y),
+               fill = "gray55", color = "gray40", linewidth = 0.5) +
+  geom_polygon(data = diamonds[diamonds$id == "Random effects model", ],
+               aes(x = x, y = y),
+               fill = "#B22222", color = "#8B0000", linewidth = 0.5) +
+
+  # ---- Left column: study labels ----
+  # Header
+  annotate("text", x = x_label, y = x_hdr_y, label = "Study",
+           hjust = 0, size = 3.5, fontface = "bold") +
+
+  # Study names — 
+  annotate("text", x = x_label, y = 5, label = "MetGen (European)",
+           hjust = 0, size = 3.2) +
+  annotate("text", x = x_label, y = 4, label = "SUGAR-MGH (Multi-Ancestry)",
+           hjust = 0, size = 3.2) +
+
+  # Pooled labels
+  annotate("text", x = x_label, y = 2, label = "Common effect model",
+           hjust = 0, size = 3.2, fontface = "bold") +
+  annotate("text", x = x_label, y = 1, label = "Random effects model",
+           hjust = 0, size = 3.2, fontface = "bold", color = "#8B0000") +
+
+  # ---- Right column: Beta [95% CI] ----
+  annotate("text", x = x_ci, y = x_hdr_y, label = "Beta [95% CI]",
+           hjust = 1, size = 3.2, fontface = "bold") +
+  annotate("text", x = x_ci, y = 5, label = "0.17 [0.13, 0.21]",
+           hjust = 1, size = 3) +
+  annotate("text", x = x_ci, y = 4, label = "\u20130.03 [\u20130.13, 0.06]",
+           hjust = 1, size = 3) +
+  annotate("text", x = x_ci, y = 2, label = "0.14 [0.10, 0.18]",
+           hjust = 1, size = 3, fontface = "bold") +
+  annotate("text", x = x_ci, y = 1, label = "0.07 [\u20130.13, 0.27]",
+           hjust = 1, size = 3, fontface = "bold", color = "#8B0000") +
+
+  # ---- Right column: Weight (RE) ----
+  annotate("text", x = x_wt, y = x_hdr_y, label = "Weight",
+           hjust = 1, size = 3.2, fontface = "bold") +
+  annotate("text", x = x_wt, y = 5, label = "52.3%",
+           hjust = 1, size = 3) +
+  annotate("text", x = x_wt, y = 4, label = "47.7%",
+           hjust = 1, size = 3) +
+  annotate("text", x = x_wt, y = 2, label = "\u2014",
+           hjust = 1, size = 3) +
+  annotate("text", x = x_wt, y = 1, label = "100.0%",
+           hjust = 1, size = 3, fontface = "bold") +
+
+  # ---- Heterogeneity: right-aligned caption ----
+  labs(
+    caption = expression(paste(
+      "Heterogeneity: ", I^2, " = 93.4%,  ",
+      tau^2, " = 0.019,  ",
+      Q[1], " = 15.07  (",
+      italic(p), " = 0.0001)"
+    ))
+  ) +
+
+  # ---- Axis ----
+  scale_x_continuous(
+    limits = c(x_min, x_max),
+    breaks = seq(-0.2, 0.3, 0.1),
+    labels = seq(-0.2, 0.3, 0.1),
+    name   = "Beta (HbA1c change per C allele copy)",
+  ) +
+  scale_y_continuous(limits = c(-0.2, 6.8), expand = c(0, 0)) +
+
+  # ---- Theme ----
+  theme_minimal(base_size = 11) +
+  theme(
+    axis.title.y     = element_blank(),
+    axis.text.y      = element_blank(),
+    axis.ticks.y     = element_blank(),
+   axis.title.x = element_text(size = 10, face = "bold", margin = margin(t = 8)),
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor   = element_blank(),
+    panel.grid.major.x = element_line(color = "gray92", linewidth = 0.3),
+    plot.caption       = element_text(hjust = 1, size = 8.5, color = "gray35",
+                                      margin = margin(t = 12)),
+    plot.margin        = margin(t = 10, r = 15, b = 10, l = 10)
+  )
+
+ggsave("forest_plot.png", width = 1200, height = 960, units = "px", dpi = 300)
+
+```
+```{r}
+# ---- Data ----
+forest_df <- data.frame(
+  label  = c("MetGen (European)", "SUGAR-MGH (Multi-Ancestry)", 
+             "", "Common effect model", "Random effects model"),
+  beta   = c(0.17, -0.03, NA, 0.14, 0.07),
+  ci_lo  = c(0.13, -0.13, NA, 0.10, -0.13),
+  ci_hi  = c(0.21,  0.06, NA, 0.18,  0.27),
+  group  = c("study", "study", "spacer", "pooled", "pooled"),
+  y      = c(5, 4, 3, 2, 1)
+)
+
+forest_df$ci_text <- ifelse(
+  is.na(forest_df$beta), "",
+  sprintf("%.2f [%.2f, %.2f]", forest_df$beta, forest_df$ci_lo, forest_df$ci_hi)
+)
+
+studies <- forest_df[forest_df$group == "study", ]
+pooled  <- forest_df[forest_df$group == "pooled", ]
+
+# ---- Diamond polygons ----
+make_diamond <- function(row) {
+  data.frame(
+    x  = c(row$ci_lo, row$beta, row$ci_hi, row$beta),
+    y  = c(row$y, row$y + 0.22, row$y, row$y - 0.22),
+    id = row$label
+  )
+}
+diamonds <- do.call(rbind, lapply(seq_len(nrow(pooled)), function(i) make_diamond(pooled[i, ])))
+
+# ---- Layout constants (UPDATED FOR COMPACT HERO) ----
+# Dropped x_wt to save space
+x_label   <- -0.42   # left edge for study labels
+x_ci      <-  0.52   # right-side: Beta [95% CI] column
+x_hdr_y   <-  6.2    # header row y position
+x_min     <- -0.42
+x_max     <-  0.55   # Tightened the right margin since Weight is gone
+
+# ---- Build plot ----
+ggplot() +
+
+  # Null effect line
+  geom_vline(xintercept = 0, linetype = "dashed", color = "gray60", linewidth = 0.4) +
+  
+  # Separator line between studies and pooled
+  geom_segment(aes(x = -0.22, xend = 0.32, y = 3, yend = 3),
+               color = "gray80", linewidth = 0.3) +
+
+  # ---- Study rows: CI lines + squares ----
+  geom_segment(data = studies,
+               aes(x = ci_lo, xend = ci_hi, y = y, yend = y),
+               linewidth = 0.8, color = "gray30") +
+  geom_point(data = studies,
+             aes(x = beta, y = y),
+             shape = 15, color = "steelblue",
+             size = c(5, 4.2)) +  
+
+  # ---- Pooled rows: diamonds ----
+  geom_polygon(data = diamonds[diamonds$id == "Common effect model", ],
+               aes(x = x, y = y),
+               fill = "gray55", color = "gray40", linewidth = 0.5) +
+  geom_polygon(data = diamonds[diamonds$id == "Random effects model", ],
+               aes(x = x, y = y),
+               fill = "#B22222", color = "#8B0000", linewidth = 0.5) +
+
+  # ---- Left column: study labels ----
+  annotate("text", x = x_label, y = x_hdr_y, label = "Study",
+           hjust = 0, size = 4, fontface = "bold") +
+  annotate("text", x = x_label, y = 5, label = "MetGen (European)",
+           hjust = 0, size = 3.8) +
+  annotate("text", x = x_label, y = 4, label = "SUGAR-MGH (Multi-Ancestry)",
+           hjust = 0, size = 3.8) +
+  annotate("text", x = x_label, y = 2, label = "Common effect model",
+           hjust = 0, size = 3.8, fontface = "bold") +
+  annotate("text", x = x_label, y = 1, label = "Random effects model",
+           hjust = 0, size = 3.8, fontface = "bold", color = "#8B0000") +
+
+  # ---- Right column: Beta [95% CI] ----
+  annotate("text", x = x_ci, y = x_hdr_y, label = "Beta [95% CI]",
+           hjust = 1, size = 4, fontface = "bold") +
+  annotate("text", x = x_ci, y = 5, label = "0.17 [0.13, 0.21]",
+           hjust = 1, size = 3.5) +
+  annotate("text", x = x_ci, y = 4, label = "\u20130.03 [\u20130.13, 0.06]",
+           hjust = 1, size = 3.5) +
+  annotate("text", x = x_ci, y = 2, label = "0.14 [0.10, 0.18]",
+           hjust = 1, size = 3.5, fontface = "bold") +
+  annotate("text", x = x_ci, y = 1, label = "0.07 [\u20130.13, 0.27]",
+           hjust = 1, size = 3.5, fontface = "bold", color = "#8B0000") +
+
+  # ---- Heterogeneity: right-aligned caption ----
+  labs(
+    caption = expression(paste(
+      "Heterogeneity: ", I^2, " = 93.4%,  ",
+      tau^2, " = 0.019,  ",
+      Q[1], " = 15.07  (",
+      italic(p), " = 0.0001)"
+    ))
+  ) +
+
+  # ---- Axis ----
+  scale_x_continuous(
+    limits = c(x_min, x_max),
+    breaks = seq(-0.2, 0.3, 0.1),
+    labels = seq(-0.2, 0.3, 0.1),
+    name   = "Beta (HbA1c change per C allele copy)",
+  ) +
+  scale_y_continuous(limits = c(-0.2, 6.8), expand = c(0, 0)) +
+
+  # ---- Theme ----
+  theme_minimal(base_size = 13) + # Increased base size for lower DPI/smaller canvas
+  theme(
+    axis.title.y     = element_blank(),
+    axis.text.y      = element_blank(),
+    axis.ticks.y     = element_blank(),
+    axis.title.x     = element_text(size = 12, face = "bold", margin = margin(t = 8)),
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor   = element_blank(),
+    panel.grid.major.x = element_line(color = "gray92", linewidth = 0.3),
+    plot.caption       = element_text(hjust = 1, size = 10, color = "gray35",
+                                      margin = margin(t = 12)),
+    plot.margin        = margin(t = 10, r = 15, b = 10, l = 10)
+  )
+
+# ---- Export using ggsave (Matching your 1200x960, 150 DPI goal) ----
+ggsave("forest-hero.png", width = 1200, height = 960, units = "px", dpi = 150)
+```
+
+
+
+
+## 5.5 Expanded Pharmacogenomic Candidate SNPs
+
+Beyond the two primary candidate SNPs, we examined variants across
+well-established metformin pharmacogene regions within the SUGAR-MGH
+summary statistics. These genes mediate metformin's pharmacokinetic pathway:
+*SLC22A1* (OCT1) controls hepatic uptake and *SLC47A1* (MATE1) controls
+renal excretion.
+
+**Data extraction:** Variants were extracted from the full GCST90269867
+summary statistics (~1M rows) using region-based queries in PowerShell,
+capturing all variants within each gene locus.
+
+```{r expanded-regions}
+# Load region-based extractions
+oct1_region  <- fread("oct1_region.txt", header = FALSE)
+mate1_region <- fread("mate1_region.txt", header = FALSE)
+
+col_names <- c("chromosome", "base_pair_location", "effect_allele",
+               "other_allele", "beta", "standard_error",
+               "effect_allele_frequency", "p_value")
+colnames(oct1_region)  <- col_names
+colnames(mate1_region) <- col_names
+
+# Add gene annotations
+oct1_region$Gene  <- "SLC22A1 (OCT1)"
+oct1_region$Role  <- "Metformin hepatic uptake transporter"
+mate1_region$Gene <- "SLC47A1 (MATE1)"
+mate1_region$Role <- "Metformin renal efflux transporter"
+
+# Combine with our primary hits
+primary_hits <- sugar_hits %>%
+  mutate(
+    Gene = case_when(
+      base_pair_location == 171007094 ~ "SLC2A2 (GLUT2)",
+      base_pair_location == 108412434 ~ "ATM",
+      TRUE ~ NA_character_
+    ),
+    Role = case_when(
+      base_pair_location == 171007094 ~ "Glucose transporter",
+      base_pair_location == 108412434 ~ "Cell cycle checkpoint",
+      TRUE ~ NA_character_
+    )
+  )
+
+all_regions <- rbind(
+  primary_hits %>% select(all_of(c(col_names, "Gene", "Role"))),
+  oct1_region  %>% select(all_of(c(col_names, "Gene", "Role"))),
+  mate1_region %>% select(all_of(c(col_names, "Gene", "Role")))
+)
+
+# Summary: top SNP per gene region
+region_summary <- all_regions %>%
+  group_by(Gene) %>%
+  slice_min(p_value, n = 1) %>%
+  ungroup() %>%
+  arrange(p_value) %>%
+  transmute(
+    Gene,
+    Role,
+    Chr       = chromosome,
+    Position  = base_pair_location,
+    EA        = effect_allele,
+    Beta      = round(beta, 4),
+    SE        = round(standard_error, 4),
+    P_value   = sprintf("%.4f", p_value),
+    EAF       = round(effect_allele_frequency, 3)
+  )
+
+kable(region_summary,
+      caption = "Top variant per pharmacogene region in SUGAR-MGH (Multi-Ancestry)",
+      col.names = c("Gene", "Role", "Chr", "Position", "EA",
+                     "Beta", "SE", "P-value", "EAF"))
+
+# Count how many variants were tested per region
+cat(sprintf("Variants examined: OCT1 region = %d, MATE1 region = %d\n",
+            nrow(oct1_region), nrow(mate1_region)))
+```
+
+# 6. Descriptive Comparison: rs11212617 (ATM)
+
+We cannot perform a formal meta-analysis for this SNP due to the outcome
+scale mismatch. Instead, we present a side-by-side comparison.
+
+```{r atm-comparison}
+atm_df <- data.frame(
+  Study    = c("GoDARTS (European)", "SUGAR-MGH (Multi-Ancestry)"),
+  Outcome  = c("Binary (responder)", "Continuous (HbA1c)"),
+  Allele   = c("C", "C (harmonized)"),
+  Estimate = c(sprintf("OR = 1.35 [log(OR) = %.4f]", study_godarts$Beta),
+               sprintf("Beta = %.4f", sugar_atm_harmonized$Beta)),
+  SE       = c(round(study_godarts$SE, 4), round(sugar_atm_harmonized$SE, 4)),
+  P_value  = c("3.0e-09", round(sugar_atm$P_value, 4))
+)
+
+kable(atm_df,
+      caption = "rs11212617 (ATM) — Individual study results (not pooled)",
+      col.names = c("Study", "Outcome Type", "Effect Allele", "Effect Estimate",
+                     "SE", "P-value"))
+```
+
+# 7. Sensitivity Analysis: Fisher's Combined P-Value Method
+
+Fisher's method (Topic 14, Slide 5) combines evidence of association
+**regardless of effect direction or outcome scale**, bypassing the
+limitations of the ATM comparison:
+
+$$-2 \sum_{i=1}^{S} \log(p_i) \sim \chi^2_{2S}$$
+
+```{r fisher-method}
+run_fisher <- function(p_values, label) {
+  stat <- -2 * sum(log(p_values))
+  df   <- 2 * length(p_values)
+  p    <- pchisq(stat, df = df, lower.tail = FALSE)
+  cat(sprintf("%s:\n  Fisher statistic = %.4f (df = %d)\n  Combined p-value = %.4e\n\n",
+              label, stat, df, p))
+  return(data.frame(Test = label, Statistic = stat, df = df, P_combined = p))
+}
+
+# Per-SNP
+f1 <- run_fisher(c(7e-14, 0.496246), "rs8192675 (SLC2A2)")
+f2 <- run_fisher(c(3e-9, 0.470687),  "rs11212617 (ATM)")
+
+# Global: all four p-values combined
+f3 <- run_fisher(c(7e-14, 0.496246, 3e-9, 0.470687),
+                 "Global (both SNPs, all studies)")
+
+fisher_table <- rbind(f1, f2, f3)
+fisher_table$P_combined <- sprintf("%.2e", fisher_table$P_combined)
+kable(fisher_table, digits = c(0, 2, 0, 4),
+      caption = "Fisher's combined p-value results",
+      col.names = c("Test", "Statistic", "df", "Combined P"))
+```
+
+# 8. Significance Thresholds
+
+```{r thresholds}
+threshold_df <- data.frame(
+  SNP      = c("rs8192675", "rs8192675", "rs11212617", "rs11212617"),
+  Study    = c("MetGen", "SUGAR-MGH", "GoDARTS", "SUGAR-MGH"),
+  P_value  = c(7e-14, 0.496, 3e-9, 0.471),
+  Ancestry = c("European", "Multi", "European", "Multi")
+)
+
+threshold_df$GWAS_Significant <- ifelse(threshold_df$P_value < 5e-8, "Yes", "No")
+threshold_df$Relaxed_5e7     <- ifelse(threshold_df$P_value < 5e-7, "Yes", "No")
+
+kable(threshold_df,
+      caption = "Significance assessment at standard and relaxed thresholds")
+```
+
+## 8.1 -log10 P-value Plot
+
+```{r}
+pval_df <- data.frame(
+  SNP = c("rs8192675", "rs8192675", "rs11212617", "rs11212617"),
+  Study = c("MetGen\n(European)", "SUGAR-MGH\n(Multi-Ancestry)",
+            "GoDARTS\n(European)", "SUGAR-MGH\n(Multi-Ancestry)"),
+  P_value = c(7e-14, 0.496, 3e-9, 0.471),
+  Ancestry = c("European", "Multi-Ancestry", "European", "Multi-Ancestry")
+)
+
+pval_df$neg_log10_p <- -log10(pval_df$P_value)
+
+ggplot(pval_df, aes(x = Study, y = neg_log10_p, color = Ancestry, shape = SNP)) +
+  geom_point(size = 4) +
+  geom_hline(yintercept = -log10(5e-8), linetype = "dashed", color = "red", linewidth = 0.6) +
+  annotate("text", x = 0.55, y = -log10(5e-8) + 0.4,
+           label = "GWAS threshold (5e-8)", hjust = 0, size = 3, color = "red") +
+  geom_hline(yintercept = -log10(5e-7), linetype = "dotted", color = "orange", linewidth = 0.6) +
+  annotate("text", x = 0.55, y = -log10(5e-7) + 0.4,
+           label = "Relaxed threshold (5e-7)", hjust = 0, size = 3, color = "orange") +
+  scale_color_manual(values = c("European" = "steelblue", "Multi-Ancestry" = "darkorange")) +
+  scale_shape_manual(values = c("rs8192675" = 16, "rs11212617" = 17)) +
+  scale_y_continuous(breaks = seq(0, 14, 2)) +
+  labs(
+    title = "Replication Failure Across Ancestry Groups",
+    subtitle = "European discovery signals do not replicate in multi-ancestry data",
+    x = NULL,
+    y = expression(-log[10](p)),
+    color = "Ancestry",
+    shape = "SNP"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    legend.position = "top",
+    panel.grid.major.x = element_blank(),
+    plot.title = element_text(face = "bold", size = 13),
+    plot.subtitle = element_text(size = 10, color = "gray40")
+  )
+
+ggsave("pvalue_threshold_plot.png", width = 8, height = 5, dpi = 300)
+```
+
+# 9. Discussion
+
+## 9.1 Summary of Findings
+
+```{r results-summary}
+cat("=== rs8192675 (SLC2A2) Meta-Analysis Results ===\n\n")
+cat(sprintf("Fixed-effects:  Beta = %.4f, 95%% CI [%.4f, %.4f], p = %.2e\n",
+            beta_FE, beta_FE - 1.96 * se_FE, beta_FE + 1.96 * se_FE, p_FE))
+cat(sprintf("Random-effects: Beta = %.4f, 95%% CI [%.4f, %.4f], p = %.4f\n",
+            beta_RE, beta_RE - 1.96 * se_RE, beta_RE + 1.96 * se_RE, p_RE))
+cat(sprintf("Heterogeneity:  Q = %.2f, p = %.4e, I^2 = %.1f%%\n", Q, Q_p, I2))
+cat(sprintf("                tau^2 = %.6f\n\n", tau2))
+
+cat("Key finding: The SLC2A2 effect REVERSES direction between\n")
+cat("MetGen (Beta = +0.17) and SUGAR-MGH (Beta = -0.03), producing\n")
+cat("extreme heterogeneity (I^2 = 93.4%) and a non-significant\n")
+cat("pooled random-effects estimate.\n")
+```
+
+
+## 9.2 Post-Hoc Power Analysis
+
+A key question is whether SUGAR-MGH had adequate statistical power to
+detect the SLC2A2 effect at genome-wide significance. If the study was
+underpowered, the non-replication is uninformative; if well-powered, it
+is evidence against a universal effect.
+
+```{r power-analysis}
+# Power calculation: ability of SUGAR-MGH to detect MetGen-sized effect
+# Under H1: Z ~ N(beta / SE, 1)
+
+beta_to_detect <- study_metgen$Beta       # 0.17 (MetGen effect)
+se_sugar       <- sugar_slc2a2$SE         # 0.0481 (SUGAR-MGH precision)
+ncp            <- beta_to_detect / se_sugar  # non-centrality parameter
+
+# Power at three thresholds
+thresholds <- c("Genome-wide (5e-8)" = 5e-8,
+                "Relaxed (5e-7)"     = 5e-7,
+                "Nominal (0.05)"     = 0.05)
+
+power_results <- data.frame(
+  Threshold = names(thresholds),
+  Alpha     = thresholds,
+  z_crit    = qnorm(1 - thresholds / 2),
+  Power     = sapply(thresholds, function(alpha) {
+    z <- qnorm(1 - alpha / 2)
+    pnorm(z - ncp, lower.tail = FALSE) + pnorm(-z - ncp)
+  }),
+  row.names = NULL
+)
+power_results$Power_pct <- sprintf("%.1f%%", power_results$Power * 100)
+power_results$Alpha <- sprintf("%.0e", power_results$Alpha)
+kable(power_results[, c("Threshold", "Alpha", "Power_pct")],
+      col.names = c("Threshold", "Alpha Level", "Power"),
+      caption = "Statistical power of SUGAR-MGH to detect the MetGen effect size (Beta = 0.17)")
+
+# Sample size needed for 80% power at genome-wide threshold
+z_gw    <- qnorm(1 - 5e-8 / 2)      # = 5.4513
+z_80    <- qnorm(0.80)               # = 0.8416
+se_need <- beta_to_detect / (z_gw + z_80)
+n_need  <- (se_sugar / se_need)^2 * 8269
+
+cat(sprintf("Sample size required for 80%% power at 5e-8: N ~ %.0f\n", n_need))
+cat(sprintf("SUGAR-MGH actual N: 8,269 (approximately %.1fx smaller than needed)\n", n_need / 8269))
+```
+

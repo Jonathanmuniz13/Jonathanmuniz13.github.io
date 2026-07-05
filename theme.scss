@@ -1,0 +1,113 @@
+/*-- scss:defaults --*/
+
+// ── Fonts ────────────────────────────────────────────────
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Public+Sans:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap');
+
+// ── Palette: clinical greenhouse ─────────────────────────
+$pine:       #15433C;   // deep blue-green — the authority color (bio + tech in one hue)
+$viridian:   #1F7A63;   // interactive green — links, hover states
+$mint-wash:  #EDF7F2;   // pale green wash — code blocks, footer
+$ink:        #15201D;   // body text — near-black with a green cast
+$paper:      #FCFDFB;   // page background — barely-green white
+$line:       #D8E5DE;   // hairline borders and rules
+
+// ── Map palette onto Bootstrap/cosmo ─────────────────────
+$primary:          $pine;
+$secondary:        $viridian;
+$body-bg:          $paper;
+$body-color:       $ink;
+$link-color:       $viridian;
+$link-decoration:  none;
+$link-hover-color: $pine;
+
+// ── Typography ───────────────────────────────────────────
+$font-family-sans-serif: "Public Sans", -apple-system, "Segoe UI", sans-serif;
+$headings-font-family:   "Space Grotesk", $font-family-sans-serif;
+$headings-font-weight:   600;
+$font-family-monospace:  "JetBrains Mono", Consolas, monospace;
+
+// ── Navbar ───────────────────────────────────────────────
+$navbar-bg: $pine;
+$navbar-fg: #F2F8F5;
+$navbar-hl: #8FE3C0;   // mint highlight on hover/active
+
+// ── Code ─────────────────────────────────────────────────
+$code-bg:    $mint-wash;
+$code-color: $pine;
+
+// ── Shape ────────────────────────────────────────────────
+$btn-border-radius: 6px;
+$border-radius:     8px;
+
+/*-- scss:rules --*/
+
+.hero-block {
+  align-items: start;        /* was center — this fixes the floating text + gaps */
+  max-width: 1100px;
+  margin-inline: auto;       /* centers the hero on wide monitors */
+  margin-block: 2.5rem 3.5rem;
+}
+.hero-lead { text-align: left; }
+
+.hero-title {
+  display: block;
+  font-family: "Space Grotesk", sans-serif;   /* matches your other headings */
+  font-weight: 700;
+  font-size: clamp(2.6rem, 4.6vw, 4rem);
+  line-height: 1.08;
+  letter-spacing: -0.015em;
+  color: $ink;
+  margin: 0 0 1.2rem;                          /* flush left, flush top */
+}
+.hero-lead p { margin-left: 0; }   /* left flush + readable measure */
+.hero-lead .btn + .btn { margin-left: 0.6rem; }
+
+.hero-figure {
+  max-width: 500px;      /* was 480px — fills more of the column */
+  margin-inline: auto;
+  align-self: start;
+  background: #ffffff;
+  border: 0.5px solid #dcece4;
+  border-radius: 16px;
+  padding: 1rem 1.1rem;
+}
+.hero-figure img { width: 100%; height: auto; display: block; border-radius: 6px; }
+.hero-figure em {
+  display: block;
+  font-style: normal;
+  font-size: 0.82rem;
+  color: #5a716a;
+  margin-top: 0.7rem;
+}
+
+/* "what I bring" three-up strip */
+.bring-strip {
+  margin: 1rem 0 3rem;
+  gap: 1px;                         /* 1px gaps become the hairline dividers */
+  background: #dcece4;              /* divider colour, shows through the gaps */
+  border: 0.5px solid #dcece4;
+  border-radius: 14px;
+  overflow: hidden;                 /* clips panel corners to the radius */
+}
+.bring-strip > [class*="g-col"] {
+  background: #f3f8f5;              /* mint-wash panel */
+  padding: 1.4rem 1.5rem;
+  margin: 0;
+}
+.bring-strip strong { color: #15433c; }
+
+/* optional crossfade — inert unless you use the .xfade block (see below) */
+.xfade { position: relative; }
+.xfade img { width: 100%; display: block; border-radius: 8px; }
+.xfade img:not(:first-child) { position: absolute; inset: 0; }
+.xfade img { animation: xfade 18s infinite; opacity: 0; }
+.xfade img:nth-child(1) { animation-delay: 0s; }
+.xfade img:nth-child(2) { animation-delay: 6s; }
+.xfade img:nth-child(3) { animation-delay: 12s; }
+@keyframes xfade { 0%{opacity:0} 4%{opacity:1} 29%{opacity:1} 33%{opacity:0} 100%{opacity:0} }
+.xfade:hover img { animation-play-state: paused; }
+
+@media (prefers-reduced-motion: reduce) {
+  .xfade img { animation: none; opacity: 0; }
+  .xfade img:first-child { opacity: 1; position: relative; }
+}
