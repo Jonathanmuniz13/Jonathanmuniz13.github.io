@@ -2,7 +2,9 @@
 title: "Get in touch"
 ---
 
-I'm a scientist who became a biostatistician, finishing my Master's in Biostatistics at the University of Florida (graduating Spring 2027) and looking for roles in clinical research, CROs, and pharmaceutical analytics. If my work looks like a fit for your team — or you just want to talk shop about R and reproducible research — send a note. I read everything and reply within a day or two.
+I'm a scientist who became a biostatistician, finishing my Master's in Biostatistics at the University of Florida (graduating Spring 2027). I'm looking for opportunities in clinical research, biostatistics, healthcare analytics, and pharmaceutical data science.
+
+Whether you're recruiting, exploring a collaboration, or simply want to discuss statistics, data visualization, or healthcare analytics, I'd be happy to connect. I read every message and do my best to reply within a day or two.
 
 📧 **Email:** [jonathanmu13\@gmail.com](mailto:jonathanmu13@gmail.com)
 
