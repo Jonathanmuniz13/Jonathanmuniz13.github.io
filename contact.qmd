@@ -2,7 +2,7 @@
 title: "Get in touch"
 ---
 
-I'm graduating in Spring 2027 and actively exploring data science and biostatistics roles — particularly in clinical trials, CROs, and pharma. If my work looks like a fit for your team, or you just want to talk shop about R and reproducible research, send a note. I read everything and reply within 1–2 days.
+I'm a scientist who became a biostatistician, finishing my Master's in Biostatistics at the University of Florida (graduating Spring 2027) and looking for roles in clinical research, CROs, and pharmaceutical analytics. If my work looks like a fit for your team — or you just want to talk shop about R and reproducible research — send a note. I read everything and reply within a day or two.
 
 📧 **Email:** [jonathanmu13\@gmail.com](mailto:jonathanmu13@gmail.com)
 

@@ -116,3 +116,12 @@ Stated plainly: the analysis is observational, so no causal claims. The logistic
 - 📄 [Read the full report](Wids-ICU-Kaggle.pdf) covers the complete code, all exploratory figures, both models, CV results, and the Kaggle submission pipeline
 - 💻 [Code on GitHub](https://github.com/Jonathanmuniz13/icu-mortality)
 - 🗄️ Data: [WiDS Datathon 2020 (GOSSIS)](https://www.kaggle.com/c/widsdatathon2020)
+
+```{r}
+adds <- c("/.quarto/", "/.Rproj.user/", "/_site/", "/_freeze/")
+gi <- if (file.exists(".gitignore")) readLines(".gitignore") else character(0)
+missing <- adds[!adds %in% gi]
+if (length(missing)) cat("\n", paste(missing, collapse = "\n"), "\n", file = ".gitignore", append = TRUE)
+writeLines(readLines(".gitignore"))   # print to confirm
+```
+
