@@ -330,6 +330,20 @@ Figure&nbsp;1: Adjusted odds ratios per interquartile-range increase. Points lef
 <li>💻 <a href="https://github.com/Jonathanmuniz13/icu-mortality">Code on GitHub</a></li>
 <li>🗄️ Data: <a href="https://www.kaggle.com/c/widsdatathon2020">WiDS Datathon 2020 (GOSSIS)</a></li>
 </ul>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>adds <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="st">"/.quarto/"</span>, <span class="st">"/.Rproj.user/"</span>, <span class="st">"/_site/"</span>, <span class="st">"/_freeze/"</span>)</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>gi <span class="ot">&lt;-</span> <span class="cf">if</span> (<span class="fu">file.exists</span>(<span class="st">".gitignore"</span>)) <span class="fu">readLines</span>(<span class="st">".gitignore"</span>) <span class="cf">else</span> <span class="fu">character</span>(<span class="dv">0</span>)</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>missing <span class="ot">&lt;-</span> adds[<span class="sc">!</span>adds <span class="sc">%in%</span> gi]</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="fu">length</span>(missing)) <span class="fu">cat</span>(<span class="st">"</span><span class="sc">\n</span><span class="st">"</span>, <span class="fu">paste</span>(missing, <span class="at">collapse =</span> <span class="st">"</span><span class="sc">\n</span><span class="st">"</span>), <span class="st">"</span><span class="sc">\n</span><span class="st">"</span>, <span class="at">file =</span> <span class="st">".gitignore"</span>, <span class="at">append =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a><span class="fu">writeLines</span>(<span class="fu">readLines</span>(<span class="st">".gitignore"</span>))   <span class="co"># print to confirm</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>
+ /.quarto/
+/.Rproj.user/
+/_site/
+/_freeze/ </code></pre>
+</div>
+</div>
 
 
 
@@ -407,7 +421,7 @@ Figure&nbsp;1: Adjusted odds ratios per interquartile-range increase. Points lef
     }
       var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
       var mailtoRegex = new RegExp(/^mailto:/);
-        var filterRegex = new RegExp('/' + window.location.host + '/');
+        var filterRegex = new RegExp("https:\/\/jonathanmuniz\.bio");
       var isInternal = (href) => {
           return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
       }
